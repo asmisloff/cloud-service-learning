@@ -2,16 +2,12 @@ package NIO;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.nio.ByteBuffer;
-import java.nio.channels.SelectionKey;
-import java.nio.channels.Selector;
-import java.nio.channels.ServerSocketChannel;
-import java.nio.channels.SocketChannel;
+import java.nio.channels.*;
 import java.util.Iterator;
 
 public class NIOServer implements Runnable {
-    private ServerSocketChannel server;
-    private Selector selector;
+    private final ServerSocketChannel server;
+    private final Selector selector;
 
     public NIOServer() throws IOException {
         server = ServerSocketChannel.open();
@@ -35,29 +31,17 @@ public class NIOServer implements Runnable {
                         System.out.println("client accepted");
                         SocketChannel channel = ((ServerSocketChannel) key.channel()).accept();
                         channel.configureBlocking(false);
-                        channel.register(selector, SelectionKey.OP_READ);
-                        channel.write(ByteBuffer.wrap("Hello!".getBytes()));
+                        SelectionKey newKey = channel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE);
+                        newKey.attach(new ChannelHandler(channel));
                     }
-                    if (key.isReadable()) {
-                        // TODO: 7/23/2020 fileStorage handle
-                        System.out.println("read key");
-                        ByteBuffer buffer = ByteBuffer.allocate(80);
-                        int count = ((SocketChannel)key.channel()).read(buffer);
-                        if (count == -1) {
-                            key.channel().close();
-                            break;
+                    if (key.isReadable() || key.isWritable()) {
+                        ChannelHandler handler = (ChannelHandler) key.attachment();
+                        try {
+                            handler.dispatch();
+                        } catch (IOException e) {
+                            handler.dispose();
+                            System.out.println("Client disconnected");
                         }
-                        buffer.flip();
-                        StringBuilder s = new StringBuilder();
-                        while (buffer.hasRemaining()) {
-                            s.append((char)buffer.get());
-                        }
-                        for (SelectionKey key1 : selector.keys()) {
-                            if (key1.channel() instanceof SocketChannel && key1.isReadable()) {
-                                ((SocketChannel) key1.channel()).write(ByteBuffer.wrap(s.toString().getBytes()));
-                            }
-                        }
-                        System.out.println();
                     }
                 }
             }
